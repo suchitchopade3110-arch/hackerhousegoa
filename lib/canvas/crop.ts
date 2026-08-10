@@ -12,17 +12,18 @@ export function coverCrop(
   dstW: number,
   dstH: number,
 ): CropRect {
-  // TODO(Phase 3): implement. Sketch:
-  // const srcRatio = srcW / srcH
-  // const dstRatio = dstW / dstH
-  // if (srcRatio > dstRatio) { // source wider than dest -> crop left/right
-  //   const sh = srcH
-  //   const sw = sh * dstRatio
-  //   return { sx: (srcW - sw) / 2, sy: 0, sw, sh }
-  // } else { // source taller than dest -> crop top/bottom
-  //   const sw = srcW
-  //   const sh = sw / dstRatio
-  //   return { sx: 0, sy: (srcH - sh) / 2, sw, sh }
-  // }
-  throw new Error('not implemented — Phase 3')
+  const srcRatio = srcW / srcH
+  const dstRatio = dstW / dstH
+
+  if (srcRatio > dstRatio) {
+    // source is wider than destination -> crop left/right
+    const sh = srcH
+    const sw = sh * dstRatio
+    return { sx: (srcW - sw) / 2, sy: 0, sw, sh }
+  }
+
+  // source is taller than (or equal to) destination -> crop top/bottom
+  const sw = srcW
+  const sh = sw / dstRatio
+  return { sx: 0, sy: (srcH - sh) / 2, sw, sh }
 }
