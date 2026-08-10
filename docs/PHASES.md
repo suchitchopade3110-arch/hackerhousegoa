@@ -22,25 +22,38 @@ already (matches PRD's own "~30 min" estimate for this step).
 
 ---
 
-## Phase 2 — Backend endpoints (skeleton only, logic pending)
+## Phase 2 — Backend endpoints ✅ done
 
 **Files:** `app/api/upload/route.ts`, `app/s/[id]/page.tsx`,
 `app/s/[id]/not-found.tsx`.
 
-**Work:**
-1. Implement `POST /api/upload` body per the TODO in the file — parse
-   multipart form, validate (`NO_FILE` / `BAD_TYPE` / `TOO_LARGE`), rate
-   limit (10/min/IP → `RATE_LIMITED`), `putCard` both variants, return
-   `{ id, shareUrl, imageUrl }` or `STORAGE_FAILED`.
-2. Wire `generateMetadata` in `app/s/[id]/page.tsx` to real `ogUrl(id)` /
-   `cardUrl(id)`, render the card + CTA in the body, call `notFound()` for
-   unknown ids.
-3. Test with `curl -F file=@card.png http://localhost:3000/api/upload`.
+**What's implemented:**
+1. `POST /api/upload` — multipart parse, validation (`NO_FILE` / `BAD_TYPE`
+   / `TOO_LARGE` for both `file` and optional `og`), in-memory per-IP rate
+   limit (`RATE_LIMITED` after 10/min — deliberately not cross-region-correct,
+   per PRD §2.3's "don't over-engineer this"), `putCard` both variants inside
+   a try/catch (`STORAGE_FAILED`), returns `{ id, shareUrl, imageUrl }`.
+2. `app/s/[id]/page.tsx` — `generateMetadata` resolves the OG image via
+   `ogUrl(id)`, falling back to the square `cardUrl(id)` if the `og` variant
+   was never uploaded (matches BACKEND_PRD §5.1's fallback note). Page body
+   verifies the card actually exists (`HEAD` request) before rendering, and
+   calls `notFound()` for malformed or missing ids — never a blank body.
+
+**Verified locally** (`npm run build` + `npm run dev`, real dev server, no
+mocks): all 5 error codes return correct status + body; rate limit trips
+after the 10th request/min; malformed and nonexistent share ids both 404
+through `not-found.tsx` instead of crashing, including when
+`BLOB_READ_WRITE_TOKEN`/host is unreachable — `urlExists()` swallows fetch
+failures rather than 500ing on a visitor.
+
+**Not yet verified:** real Vercel Blob storage (needs a live token) and the
+actual X Card Validator check — both are Phase 4.
 
 **Exit criteria:** upload returns 200 with a working `shareUrl`; error
 codes match the table in `docs/API_CONTRACT.md` §3.1; `/s/:id` HTML
 contains absolute `og:image`/`twitter:card` tags (view-source, not
-DevTools — meta tags must be in the initial HTML).
+DevTools — meta tags must be in the initial HTML). ✅ all confirmed against
+a local dev server; production-URL confirmation is Phase 4.
 
 ---
 
