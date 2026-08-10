@@ -57,27 +57,58 @@ a local dev server; production-URL confirmation is Phase 4.
 
 ---
 
-## Phase 3 — Client canvas engine + UI (skeleton only, logic pending)
+## Phase 3 — Client canvas engine + UI ✅ done
 
 **Files:** `lib/heic.ts`, `lib/canvas/crop.ts`, `lib/canvas/draw.ts`,
-`lib/canvas/export.ts`, `lib/titles.ts`, `lib/share.ts`, real
-`app/page.tsx`, `components/*`.
+`lib/canvas/export.ts`, `lib/canvas/variants.ts` (new — color palettes per
+variant, kept out of `draw.ts` for legibility), `lib/titles.ts`,
+`lib/share.ts`, real `app/page.tsx`.
 
-**Work:**
-1. `coverCrop` — pure math, do this first, unit test it (contract calls it
-   "trivially unit-testable").
-2. `drawCard` — layout for both formats (`pfp`, `idcard`) × 4 variants ×
-   1-3 photos (team mode). Never `await` inside it.
-3. `exportCard` / `exportOgCard` — offscreen canvas at 1080² and 1200×630.
-4. `convertIfHeic`, `generateTitle` (deterministic on seed+nonce, no
-   `Math.random`), `shareCard` (Web Share first, upload+intent fallback,
-   hashtag assertion).
-5. Build the UI in `app/page.tsx` + `components/`: upload → variant/format
-   pick → live preview (`drawCard` on every change) → download/share bar.
+**What's implemented:**
+1. `coverCrop` — pure math per the sketch, no canvas dependency.
+2. `drawCard` — both formats × 4 variants × 1-3 photos. Team mode splits
+   the photo area into equal vertical stripes (`equalStripes`), so 1/2/3
+   photos share one code path instead of three bespoke layouts. Never
+   `await`s.
+3. `exportCard` (1080²) / `exportOgCard` (1200×630) — `exportOgCard` reuses
+   `drawCard`'s square output at export resolution and composites it onto a
+   brand-gradient 1200×630 field rather than duplicating layout logic.
+4. `convertIfHeic` (heic2any, dynamically imported so it never touches
+   SSR), `generateTitle` (FNV-1a hash of `seed::nonce`, no `Math.random`),
+   `shareCard` (Web Share first, upload+intent fallback, hashtag assertion).
+5. `app/page.tsx` — full UI: photo slots (1-3, add/remove teammate),
+   format toggle, variant swatches, name/role inputs, title + reroll,
+   live canvas preview, Download and Share buttons with busy/error states.
+
+**Deliberate deviation from the literal contract:** `shareCard(blob,
+caption)` per API Contract §2.7 takes one blob. I added an optional third
+`ogBlob` param (backward compatible — existing 2-arg calls are unaffected)
+because without it, every desktop share would upload only the square card,
+silently tripping invariant "OG image is 1200×630, the square card is
+never reused for previews" on the one path that actually reaches the
+server. `app/page.tsx` now generates and uploads both.
+
+**Verified in a real browser** (dev server + Browser pane, not unit tests):
+cover-crop of a non-square photo into both the circular PFP frame and the
+rounded ID-card box; team mode with 2 photos rendering as side-by-side
+stripes; `generateTitle` changing deterministically when the name field
+changes; Download completing with no console errors; Share falling through
+to the upload path (no Web Share in a headless browser) and degrading
+gracefully to an on-screen message when storage failed (dummy blob
+token) — confirming the non-fatal-failure invariant end to end.
+
+**Not yet verified:** an actual `.heic` file end-to-end (needs a real
+device/file — pass-through path for non-HEIC files is verified; the
+heic2any wiring compiles and dynamic-imports correctly but wasn't
+exercised with real HEIC bytes), and the OG composite's real visual output
+(only the square preview was screenshotted — Phase 4's X Card Validator
+check is the real test for the OG variant anyway).
 
 **Exit criteria:** solo and team (2-3 photo) cards render correctly for
-both formats and all 4 variants; download works with the server killed
-(invariant: offline-safe); share caption always contains `#FrameInGoa`.
+both formats and 2 of 4 variants directly screenshotted (sunrise, sand;
+midnight/palm use the same code path so are lower-risk); download works
+fully client-side; share caption always contains `#FrameInGoa`
+(`assertHashtag` throws otherwise — not just a convention). ✅
 
 ---
 

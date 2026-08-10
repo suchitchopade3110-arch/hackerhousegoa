@@ -1,13 +1,12 @@
 # components/
 
-Empty on purpose until Phase 3. Planned breakdown (referenced as TODOs in
-[`app/page.tsx`](../app/page.tsx)):
+Left empty deliberately. Phase 3 built the tool as a single `app/page.tsx`
+client component rather than splitting into `UploadZone` /
+`VariantPicker` / `CardPreview` / `DownloadShareBar` as originally sketched
+here — at this scope (one page, one form, one canvas) the split added
+indirection without adding clarity. All image/canvas logic still lives in
+`lib/` per the module contracts in `HHGoa_Task1_API_Contract.docx` §2;
+`app/page.tsx` only wires state to those functions.
 
-- `UploadZone.tsx` — file input / drag-drop, calls `convertIfHeic`
-- `VariantPicker.tsx` — sunrise / midnight / sand / palm selector
-- `TeamPhotoPicker.tsx` — 2–3 photo slots for team mode
-- `CardPreview.tsx` — live canvas preview, calls `drawCard` on every change
-- `DownloadShareBar.tsx` — download button + `shareCard` trigger
-
-Keep these presentational; all image/canvas logic stays in `lib/` per the
-module contracts in `HHGoa_Task1_API_Contract.docx` §2.
+Revisit componentizing if `app/page.tsx` grows past what fits on one
+screen, but that's a nice-to-have, not a Phase 4 blocker.
