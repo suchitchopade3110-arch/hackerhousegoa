@@ -27,9 +27,9 @@ function toPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 /** Square card, 1080x1080 — the downloadable / shareable PFP or ID card. */
-export async function exportCard(data: CardData): Promise<Blob> {
+export async function exportCard(data: CardData, qrImage?: HTMLImageElement | null): Promise<Blob> {
   const { canvas, ctx } = newCanvas(BASE_SIZE * 2, BASE_SIZE * 2)
-  drawCard(ctx, data, 2)
+  drawCard(ctx, data, 2, qrImage)
   return toPngBlob(canvas)
 }
 
@@ -38,12 +38,12 @@ export async function exportCard(data: CardData): Promise<Blob> {
  * layout code) scaled down and centred on a brand-coloured field, since
  * 1200x630 isn't a crop of 1080x1080 — it's a different canvas.
  */
-export async function exportOgCard(data: CardData): Promise<Blob> {
+export async function exportOgCard(data: CardData, qrImage?: HTMLImageElement | null): Promise<Blob> {
   const OG_W = 1200
   const OG_H = 630
 
   const square = newCanvas(BASE_SIZE * 2, BASE_SIZE * 2)
-  drawCard(square.ctx, data, 2)
+  drawCard(square.ctx, data, 2, qrImage)
 
   const { canvas, ctx } = newCanvas(OG_W, OG_H)
   const palette = VARIANTS[data.variant]
