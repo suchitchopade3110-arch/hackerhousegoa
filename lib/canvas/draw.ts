@@ -21,8 +21,18 @@ interface Rect {
  * Synchronous and idempotent. Assumes fonts are already loaded and images
  * already decoded — it must never await, or the live preview will tear.
  * See API Contract §2.4 and invariant §6 ("drawCard never awaits").
+ *
+ * `qrImage`, when supplied, is a pre-decoded QR code (see lib/qr.ts) that
+ * links to /watch — the id-card format prints it so a scan opens the
+ * welcome video. Optional/nullable so the card still renders correctly
+ * before the QR has finished generating, or if generation fails.
  */
-export function drawCard(ctx: CanvasRenderingContext2D, data: CardData, scale: number): void {
+export function drawCard(
+  ctx: CanvasRenderingContext2D,
+  data: CardData,
+  scale: number,
+  qrImage?: HTMLImageElement | null,
+): void {
   ctx.save()
   ctx.scale(scale, scale)
   ctx.clearRect(0, 0, BASE_SIZE, BASE_SIZE)
@@ -33,7 +43,7 @@ export function drawCard(ctx: CanvasRenderingContext2D, data: CardData, scale: n
   if (data.format === 'pfp') {
     drawPfp(ctx, data, palette)
   } else {
-    drawIdCard(ctx, data, palette)
+    drawIdCard(ctx, data, palette, qrImage ?? null)
   }
 
   ctx.restore()
@@ -101,7 +111,12 @@ function drawPfp(ctx: CanvasRenderingContext2D, data: CardData, palette: Palette
   ctx.fillText('HH GOA 2026', cx, BASE_SIZE - 16)
 }
 
-function drawIdCard(ctx: CanvasRenderingContext2D, data: CardData, palette: Palette): void {
+function drawIdCard(
+  ctx: CanvasRenderingContext2D,
+  data: CardData,
+  palette: Palette,
+  qrImage: HTMLImageElement | null,
+): void {
   const M = 24 // outer margin
 
   // header bar
@@ -114,8 +129,10 @@ function drawIdCard(ctx: CanvasRenderingContext2D, data: CardData, palette: Pale
   ctx.textAlign = 'right'
   ctx.fillText(`#${String(Math.min(Math.max(data.number, 1), 247)).padStart(3, '0')}`, BASE_SIZE - M, 38)
 
-  // photo box (rounded rect), team mode = vertical stripes inside it
-  const photoArea: Rect = { x: M, y: 88, w: BASE_SIZE - M * 2, h: 250 }
+  // photo box (rounded rect), team mode = vertical stripes inside it.
+  // Shorter than before (was 250) to leave room for the QR block below the
+  // name/role/title text without shrinking the card itself.
+  const photoArea: Rect = { x: M, y: 84, w: BASE_SIZE - M * 2, h: 200 }
   const radius = 16
   ctx.save()
   roundedRectPath(ctx, photoArea, radius)
@@ -138,21 +155,72 @@ function drawIdCard(ctx: CanvasRenderingContext2D, data: CardData, palette: Pale
   roundedRectPath(ctx, photoArea, radius)
   ctx.stroke()
 
-  // name / role / title
-  let y = photoArea.y + photoArea.h + 46
+  // name / role / title — left column, kept narrower than the full card
+  // width so it never runs under the QR block on the right.
+  const textMaxX = BASE_SIZE - M - 118 // qrSize (96) + gap (14) + margin, see below
+  let y = photoArea.y + photoArea.h + 38
   ctx.textAlign = 'left'
   ctx.fillStyle = palette.text
-  ctx.font = '700 30px system-ui, -apple-system, "Segoe UI", sans-serif'
-  ctx.fillText(data.name.trim() || 'Builder', M, y)
+  ctx.font = '700 26px system-ui, -apple-system, "Segoe UI", sans-serif'
+  fillTextClipped(ctx, data.name.trim() || 'Builder', M, y, textMaxX - M)
 
-  y += 32
-  ctx.font = '400 18px system-ui, -apple-system, "Segoe UI", sans-serif'
-  ctx.fillText(data.role.trim() || '—', M, y)
+  y += 26
+  ctx.font = '400 16px system-ui, -apple-system, "Segoe UI", sans-serif'
+  fillTextClipped(ctx, data.role.trim() || '—', M, y, textMaxX - M)
 
-  y += 38
+  y += 28
   ctx.fillStyle = palette.accent
-  ctx.font = 'italic 700 20px system-ui, -apple-system, "Segoe UI", sans-serif'
-  ctx.fillText(data.title, M, y)
+  ctx.font = 'italic 700 17px system-ui, -apple-system, "Segoe UI", sans-serif'
+  fillTextClipped(ctx, data.title, M, y, textMaxX - M)
+
+  if (qrImage) {
+    drawWatchQr(ctx, palette, qrImage)
+  }
+}
+
+/**
+ * QR block that links to /watch (see lib/qr.ts + app/watch/page.tsx) —
+ * printed bottom-right of every id card so scanning it opens the welcome
+ * video. Sits on its own white quiet-zone card so it stays scannable
+ * against every colour variant's background.
+ */
+function drawWatchQr(ctx: CanvasRenderingContext2D, palette: Palette, qrImage: HTMLImageElement): void {
+  const qrSize = 96
+  const pad = 8
+  const M = 24
+  const qrX = BASE_SIZE - M - qrSize
+  const qrY = BASE_SIZE - M - qrSize - 22 // leaves room for the label below it
+
+  const quietZone: Rect = { x: qrX - pad, y: qrY - pad, w: qrSize + pad * 2, h: qrSize + pad * 2 }
+  ctx.fillStyle = '#ffffff'
+  roundedRectPath(ctx, quietZone, 8)
+  ctx.fill()
+  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
+
+  ctx.fillStyle = palette.text
+  ctx.textAlign = 'center'
+  ctx.font = '400 11px system-ui, -apple-system, "Segoe UI", sans-serif'
+  ctx.fillText('Scan to watch', qrX + qrSize / 2, qrY + qrSize + pad + 14)
+}
+
+/** Truncates with an ellipsis if the text would overflow `maxWidth`, so a
+ * long name/role/title can never run under the QR block. */
+function fillTextClipped(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+): void {
+  if (ctx.measureText(text).width <= maxWidth) {
+    ctx.fillText(text, x, y)
+    return
+  }
+  let clipped = text
+  while (clipped.length > 1 && ctx.measureText(`${clipped}…`).width > maxWidth) {
+    clipped = clipped.slice(0, -1)
+  }
+  ctx.fillText(`${clipped}…`, x, y)
 }
 
 function roundedRectPath(ctx: CanvasRenderingContext2D, rect: Rect, radius: number): void {

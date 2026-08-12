@@ -11,7 +11,16 @@ function required(name: string): string {
   return value
 }
 
-const baseUrl = required('NEXT_PUBLIC_BASE_URL').replace(/\/+$/, '')
+// Deliberately NOT `required('NEXT_PUBLIC_BASE_URL')`: Next.js only inlines
+// NEXT_PUBLIC_ vars into the client bundle when referenced as a static
+// `process.env.NEXT_PUBLIC_X` property access, not through a variable name.
+// A dynamic lookup works server-side (real process.env at runtime) but
+// silently reads `undefined` in the browser, even with .env.local set.
+const rawBaseUrl = process.env.NEXT_PUBLIC_BASE_URL
+if (!rawBaseUrl) {
+  throw new Error('[env] missing required env var: NEXT_PUBLIC_BASE_URL')
+}
+const baseUrl = rawBaseUrl.replace(/\/+$/, '')
 
 if (process.env.NODE_ENV === 'production' && /localhost|127\.0\.0\.1/.test(baseUrl)) {
   throw new Error(

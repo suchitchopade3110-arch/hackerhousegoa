@@ -12,6 +12,8 @@ import { drawCard, BASE_SIZE } from '@/lib/canvas/draw'
 import { exportCard, exportOgCard } from '@/lib/canvas/export'
 import { generateTitle } from '@/lib/titles'
 import { shareCard } from '@/lib/share'
+import { loadQrImage } from '@/lib/qr'
+import { BASE_URL } from '@/lib/env'
 
 const VARIANT_OPTIONS: Variant[] = ['sunrise', 'midnight', 'sand', 'palm']
 const VARIANT_SWATCH: Record<Variant, string> = {
@@ -45,6 +47,8 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<'download' | 'share' | null>(null)
   const [lastShareUrl, setLastShareUrl] = useState<string | null>(null)
+  const [qrImage, setQrImage] = useState<HTMLImageElement | null>(null)
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
 
   const title = useMemo(() => generateTitle(name.trim() || 'builder', nonce), [name, nonce])
 
@@ -61,13 +65,48 @@ export default function HomePage() {
     [photos, name, role, title, number, format, variant],
   )
 
+  // QR code for the id card, generated once — it always points at the same
+  // fixed /watch URL (see lib/qr.ts), so there's nothing to regenerate per
+  // edit. Non-fatal on failure: the card still renders fine without it.
+  useEffect(() => {
+    let cancelled = false
+    loadQrImage(`${BASE_URL}/watch`)
+      .then((img) => {
+        if (!cancelled) setQrImage(img)
+      })
+      .catch((cause) => {
+        console.error('[qr] could not generate watch QR', cause)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Welcome-video URL for the on-page preview below — served from
+  // GET /api/video so the path lives in one place. Purely additive to the
+  // page; the id card's QR embeds the /watch URL directly (see lib/qr.ts).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/video')
+      .then((res) => res.json())
+      .then((data: { videoUrl?: string }) => {
+        if (!cancelled && data.videoUrl) setVideoUrl(data.videoUrl)
+      })
+      .catch((cause) => {
+        console.error('[video] could not load video url', cause)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Live preview: drawCard is sync and never awaits, so this can run
   // directly in the effect body without tearing (API Contract §2.4).
   useEffect(() => {
     const ctx = canvasRef.current?.getContext('2d')
     if (!ctx) return
-    drawCard(ctx, cardData, 1)
-  }, [cardData])
+    drawCard(ctx, cardData, 1, qrImage)
+  }, [cardData, qrImage])
 
   const handleFile = useCallback(async (index: number, file: File) => {
     setError(null)
@@ -102,7 +141,7 @@ export default function HomePage() {
     setError(null)
     setBusy('download')
     try {
-      const blob = await exportCard(cardData)
+      const blob = await exportCard(cardData, qrImage)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -116,14 +155,17 @@ export default function HomePage() {
     } finally {
       setBusy(null)
     }
-  }, [cardData])
+  }, [cardData, qrImage])
 
   const handleShare = useCallback(async () => {
     setError(null)
     setLastShareUrl(null)
     setBusy('share')
     try {
-      const [square, og] = await Promise.all([exportCard(cardData), exportOgCard(cardData)])
+      const [square, og] = await Promise.all([
+        exportCard(cardData, qrImage),
+        exportOgCard(cardData, qrImage),
+      ])
       const result = await shareCard(square, CAPTION, og)
       if (result.via === 'intent') {
         setLastShareUrl(result.shareUrl)
@@ -137,7 +179,7 @@ export default function HomePage() {
     } finally {
       setBusy(null)
     }
-  }, [cardData])
+  }, [cardData, qrImage])
 
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -145,6 +187,20 @@ export default function HomePage() {
       <p style={{ color: '#a9a9b3', marginTop: 0 }}>
         Upload a photo, get a branded card. Nothing leaves your browser until you share.
       </p>
+
+      {videoUrl && (
+        <section style={{ marginTop: '1.5rem' }}>
+          <h2 style={sectionHeading}>Welcome video</h2>
+          <video
+            controls
+            src={videoUrl}
+            style={{ width: '100%', maxWidth: 420, borderRadius: 12, background: '#000' }}
+          />
+          <p style={{ color: '#a9a9b3', fontSize: 13, marginTop: 6 }}>
+            This is also on your Builder ID card — scan the QR on it to watch anytime.
+          </p>
+        </section>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1.5rem' }}>
         <section>
